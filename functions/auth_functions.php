@@ -30,7 +30,6 @@ function register($data, $connect2db, &$result, &$resultClass)
 
     $resultClass = "success";
     $result = "Registered Successfully";
-
 }
 
 function login($data, $connect2db, &$result, &$resultClass)
@@ -68,12 +67,18 @@ function login($data, $connect2db, &$result, &$resultClass)
     }
 
     $_SESSION['user'] = [
-        'id' => $row['id'],
+        'id'        => $row['id'],
         'firstname' => $row['firstname'],
-        'lastname' => $row['lastname'],
-        'email' => $row['email'],
-        'role' => $row['role']
+        'lastname'  => $row['lastname'],
+        'email'     => $row['email'],
+        'role'      => $row['role']
     ];
 
-    header("Location: dashboard.php");
+    // ── Role-based redirect ──────────────────────────────────────────────────
+    if ($row['role'] === 'supplier') {
+        header("Location: supplier.php");
+    } else {
+        header("Location: dashboard.php");
+    }
+    exit;
 }

@@ -3,6 +3,12 @@ session_start();
 include '../db/connect.php';
 include '../functions/auth_guard.php';
 
+// Block suppliers from admin panel
+if ($_SESSION['user']['role'] === 'supplier') {
+    header("Location: supplier.php");
+    exit;
+}
+
 // Check if user is admin
 if ($_SESSION['user']['role'] !== 'admin') {
     header("Location: dashboard.php");
@@ -12,6 +18,7 @@ if ($_SESSION['user']['role'] !== 'admin') {
 include '../functions/admin_functions.php';
 include '../functions/inventory_functions.php';
 include '../functions/pos_functions.php';
+include '../functions/supplier_functions.php';   // ← NEW
 
 $user = $_SESSION['user'];
 
@@ -68,18 +75,34 @@ if (isset($_POST['refund_sale'])) {
     refundSale($connect2db, $_POST['sale_id'], $user['id'], $resultClass, $result);
 }
 
+// ── NEW: Supplier account management ──────────────────────────────────────────
+if (isset($_POST['create_supplier'])) {
+    createSupplier($connect2db, $_POST, $resultClass, $result);
+}
+
+if (isset($_POST['delete_supplier'])) {
+    deleteSupplier($connect2db, $_POST['supplier_id'], $resultClass, $result);
+}
+
+if (isset($_POST['reset_supplier_password'])) {
+    resetSupplierPassword($connect2db, $_POST['supplier_id'], $_POST['new_supplier_password'], $resultClass, $result);
+}
+
 // Get data
-$users = getAllUsers($connect2db);
-$products = getProducts($connect2db);
-$categories = getCategories($connect2db);
-$systemStats = getSystemStats($connect2db);
+$users          = getAllUsers($connect2db);
+$products       = getProducts($connect2db);
+$categories     = getCategories($connect2db);
+$systemStats    = getSystemStats($connect2db);
 $systemSettings = getSystemSettings($connect2db);
-$recentSales = getSales($connect2db, 10);
-$activityLogs = getSystemActivityLogs($connect2db, 20);
+$recentSales    = getSales($connect2db, 10);
+$activityLogs   = getSystemActivityLogs($connect2db, 20);
+
+// Supplier data  ← NEW
+$suppliers = getAllSuppliers($connect2db);
 
 // Report data
-$salesReport = getSalesReport($connect2db);
-$topProducts = getTopProductsReport($connect2db);
+$salesReport      = getSalesReport($connect2db);
+$topProducts      = getTopProductsReport($connect2db);
 $staffPerformance = getStaffPerformanceReport($connect2db);
 
 // Search functionality
@@ -119,12 +142,13 @@ if ($searchTerm) {
 
         <!-- Admin Navigation Tabs -->
         <div class="admin-tabs">
-            <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
-            <button class="tab-btn" onclick="showTab('users')">Staff Management</button>
-            <button class="tab-btn" onclick="showTab('products')">Product Management</button>
-            <button class="tab-btn" onclick="showTab('sales')">Sales Management</button>
-            <button class="tab-btn" onclick="showTab('reports')">Reports</button>
-            <button class="tab-btn" onclick="showTab('settings')">System Settings</button>
+            <button class="tab-btn active" onclick="showTab('overview', this)">Overview</button>
+            <button class="tab-btn" onclick="showTab('users', this)">Staff Management</button>
+            <button class="tab-btn" onclick="showTab('suppliers', this)">Suppliers</button>
+            <button class="tab-btn" onclick="showTab('products', this)">Product Management</button>
+            <button class="tab-btn" onclick="showTab('sales', this)">Sales Management</button>
+            <button class="tab-btn" onclick="showTab('reports', this)">Reports</button>
+            <button class="tab-btn" onclick="showTab('settings', this)">System Settings</button>
         </div>
 
         <!-- Overview Tab -->
@@ -220,6 +244,7 @@ if ($searchTerm) {
                         </thead>
                         <tbody>
                             <?php foreach ($users as $userItem): ?>
+                            <?php if ($userItem['role'] === 'supplier') continue; // suppliers shown in their own tab ?>
                             <tr>
                                 <td><?php echo $userItem['firstname'] . ' ' . $userItem['lastname']; ?></td>
                                 <td><?php echo $userItem['email']; ?></td>
@@ -247,9 +272,9 @@ if ($searchTerm) {
                                             <input type="text" name="lastname" value="<?php echo $userItem['lastname']; ?>" required>
                                             <input type="email" name="email" value="<?php echo $userItem['email']; ?>" required>
                                             <select name="role" required>
-                                                <option value="admin" <?php echo $userItem['role'] == 'admin' ? 'selected' : ''; ?>>Admin</option>
-                                                <option value="manager" <?php echo $userItem['role'] == 'manager' ? 'selected' : ''; ?>>Manager</option>
-                                                <option value="cashier" <?php echo $userItem['role'] == 'cashier' ? 'selected' : ''; ?>>Cashier</option>
+                                                <option value="admin"    <?php echo $userItem['role'] == 'admin'    ? 'selected' : ''; ?>>Admin</option>
+                                                <option value="manager"  <?php echo $userItem['role'] == 'manager'  ? 'selected' : ''; ?>>Manager</option>
+                                                <option value="cashier"  <?php echo $userItem['role'] == 'cashier'  ? 'selected' : ''; ?>>Cashier</option>
                                             </select>
                                         </div>
                                         <div class="form-actions">
@@ -282,6 +307,95 @@ if ($searchTerm) {
                 </div>
             </div>
         </div>
+
+        <!-- ════════════════════════════════════════════════════════════
+             SUPPLIERS TAB  (NEW)
+        ════════════════════════════════════════════════════════════ -->
+        <div id="suppliers" class="tab-content">
+            <h2>Supplier Management</h2>
+
+            <!-- Create supplier account -->
+            <div class="supplier-mgmt-section">
+                <h3>Add New Supplier Account</h3>
+                <form method="POST" action="" class="user-form">
+                    <div class="form-row">
+                        <input type="text"  name="firstname" placeholder="First Name" required>
+                        <input type="text"  name="lastname"  placeholder="Last Name"  required>
+                        <input type="email" name="email"     placeholder="Email"       required>
+                    </div>
+                    <div class="form-row">
+                        <input type="password" name="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" name="create_supplier" class="btn-primary">Create Supplier Account</button>
+                </form>
+            </div>
+
+            <!-- Suppliers list -->
+            <div class="supplier-mgmt-section">
+                <h3>Registered Suppliers</h3>
+                <?php if (empty($suppliers)): ?>
+                    <p style="color:#6b7280; padding:20px 0;">No supplier accounts yet. Create one above.</p>
+                <?php else: ?>
+                <div class="table-container">
+                    <table class="suppliers-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Products</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($suppliers as $sup): ?>
+                            <tr>
+                                <td><strong><?php echo htmlspecialchars($sup['firstname'] . ' ' . $sup['lastname']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($sup['email']); ?></td>
+                                <td>
+                                    <span class="product-count-badge">
+                                        <?php echo (int)$sup['product_count']; ?> product<?php echo $sup['product_count'] != 1 ? 's' : ''; ?>
+                                    </span>
+                                </td>
+                                <td><?php echo date('M j, Y', strtotime($sup['created_at'])); ?></td>
+                                <td>
+                                    <button class="btn-reset" onclick="toggleSupplierPasswordReset(<?php echo $sup['id']; ?>)">Reset PW</button>
+                                    <form method="POST" action="" style="display:inline;">
+                                        <input type="hidden" name="supplier_id" value="<?php echo $sup['id']; ?>">
+                                        <button
+                                            type="submit"
+                                            name="delete_supplier"
+                                            class="btn-delete"
+                                            onclick="return confirm('Delete this supplier and all their products?')"
+                                        >Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+
+                            <!-- Password reset form (inline) -->
+                            <tr id="sup-pw-reset-<?php echo $sup['id']; ?>" class="edit-form" style="display:none;">
+                                <td colspan="5">
+                                    <form method="POST" action="">
+                                        <input type="hidden" name="supplier_id" value="<?php echo $sup['id']; ?>">
+                                        <div class="form-row">
+                                            <label>New Password for <?php echo htmlspecialchars($sup['firstname']); ?>:</label>
+                                            <input type="password" name="new_supplier_password" required>
+                                        </div>
+                                        <div class="form-actions">
+                                            <button type="submit" name="reset_supplier_password" class="btn-save">Reset Password</button>
+                                            <button type="button" class="btn-cancel" onclick="toggleSupplierPasswordReset(<?php echo $sup['id']; ?>)">Cancel</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <!-- ════ END SUPPLIERS TAB ════ -->
 
         <!-- Product Management Tab -->
         <div id="products" class="tab-content">
@@ -618,18 +732,11 @@ if ($searchTerm) {
     </div>
 
     <script>
-        function showTab(tabName) {
-            // Hide all tabs
-            const tabs = document.querySelectorAll('.tab-content');
-            tabs.forEach(tab => tab.classList.remove('active'));
-            
-            // Remove active class from all buttons
-            const buttons = document.querySelectorAll('.tab-btn');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected tab
+        function showTab(tabName, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            if (btn) btn.classList.add('active');
         }
         
         function toggleUserEditForm(userId) {
@@ -639,6 +746,11 @@ if ($searchTerm) {
         
         function togglePasswordReset(userId) {
             const form = document.getElementById('password-reset-' + userId);
+            form.style.display = form.style.display === 'none' ? 'table-row' : 'none';
+        }
+
+        function toggleSupplierPasswordReset(supplierId) {
+            const form = document.getElementById('sup-pw-reset-' + supplierId);
             form.style.display = form.style.display === 'none' ? 'table-row' : 'none';
         }
         
@@ -653,13 +765,19 @@ if ($searchTerm) {
         }
         
         function viewSaleDetails(saleId) {
-            // This would typically load sale details via AJAX
             alert('Sale details for #' + saleId + ' would be displayed here');
         }
         
         function closeModal() {
             document.getElementById('saleDetailsModal').style.display = 'none';
         }
+
+        // Open suppliers tab directly if that's the active tab from URL hash
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.location.hash === '#suppliers') {
+                showTab('suppliers', document.querySelector('[onclick*="suppliers"]'));
+            }
+        });
     </script>
 
 </body>

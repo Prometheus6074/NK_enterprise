@@ -2,6 +2,11 @@
 session_start();
 include '../db/connect.php';
 include '../functions/auth_guard.php';
+// Block suppliers from the staff dashboard
+if ($_SESSION['user']['role'] === 'supplier') {
+    header("Location: supplier.php");
+    exit;
+}
 include '../functions/inventory_functions.php';
 include '../functions/pos_functions.php';
 
@@ -60,7 +65,7 @@ if ($searchTerm) {
             <p>Welcome, <?php echo $user['firstname'] ?> (<?php echo ucfirst($user['role']) ?>)</p>
             <div class="nav-links">
                 <?php if ($user['role'] === 'admin'): ?>
-                <a href="admin.php" class="admin-link">Admin</a>
+                    <a href="admin.php" class="admin-link">Admin</a>
                 <?php endif; ?>
                 <a href="pos.php" class="pos-link">POS</a>
                 <a href="profile.php" class="profile-link">Profile</a>
@@ -69,9 +74,9 @@ if ($searchTerm) {
         </div>
 
         <?php if (isset($result)): ?>
-        <div class="message <?php echo $resultClass; ?>">
-            <?php echo $result; ?>
-        </div>
+            <div class="message <?php echo $resultClass; ?>">
+                <?php echo $result; ?>
+            </div>
         <?php endif; ?>
 
         <!-- Statistics Cards -->
@@ -103,50 +108,50 @@ if ($searchTerm) {
         </div>
 
         <?php if ($searchTerm): ?>
-        <div class="search-results">
-            <p>Search results for "<?php echo htmlspecialchars($searchTerm); ?>"</p>
-        </div>
+            <div class="search-results">
+                <p>Search results for "<?php echo htmlspecialchars($searchTerm); ?>"</p>
+            </div>
         <?php endif; ?>
 
         <?php if (!empty($lowStockProducts)): ?>
-        <div class="low-stock-alert">
-            <h3>⚠️ Low Stock Alert</h3>
-            <?php foreach ($lowStockProducts as $product): ?>
-                <div class="low-stock-item">
-                    <strong><?php echo $product['name']; ?></strong> - <?php echo $product['quantity']; ?> left (Min: <?php echo $product['min_quantity']; ?>)
-                </div>
-            <?php endforeach; ?>
-        </div>
+            <div class="low-stock-alert">
+                <h3>⚠️ Low Stock Alert</h3>
+                <?php foreach ($lowStockProducts as $product): ?>
+                    <div class="low-stock-item">
+                        <strong><?php echo $product['name']; ?></strong> - <?php echo $product['quantity']; ?> left (Min: <?php echo $product['min_quantity']; ?>)
+                    </div>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
 
         <!-- Add Product Form -->
         <?php if ($user['role'] === 'admin' || $user['role'] === 'manager'): ?>
-        <div class="add-product-section">
-            <h2>Add New Product</h2>
-            <form method="POST" action="" class="product-form">
-                <div class="form-row">
-                    <input type="text" name="sku" placeholder="SKU" required>
-                    <input type="text" name="name" placeholder="Product Name" required>
-                </div>
-                <div class="form-row">
-                    <select name="category_id" required>
-                        <option value="">Select Category</option>
-                        <?php foreach ($categories as $category): ?>
-                            <option value="<?php echo $category['id']; ?>"><?php echo $category['name']; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <input type="number" name="quantity" placeholder="Quantity" required>
-                    <input type="number" name="min_quantity" placeholder="Min Quantity" required>
-                    <input type="decimal" name="unit_price" placeholder="Unit Price" step="0.01" required>
-                </div>
-                <div class="form-row">
-                    <input type="text" name="supplier" placeholder="Supplier">
-                    <input type="text" name="location" placeholder="Location">
-                </div>
-                <textarea name="description" placeholder="Description"></textarea>
-                <button type="submit" name="add_product" class="btn-primary">Add Product</button>
-            </form>
-        </div>
+            <div class="add-product-section">
+                <h2>Add New Product</h2>
+                <form method="POST" action="" class="product-form">
+                    <div class="form-row">
+                        <input type="text" name="sku" placeholder="SKU" required>
+                        <input type="text" name="name" placeholder="Product Name" required>
+                    </div>
+                    <div class="form-row">
+                        <select name="category_id" required>
+                            <option value="">Select Category</option>
+                            <?php foreach ($categories as $category): ?>
+                                <option value="<?php echo $category['id']; ?>"><?php echo $category['name']; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="number" name="quantity" placeholder="Quantity" required>
+                        <input type="number" name="min_quantity" placeholder="Min Quantity" required>
+                        <input type="decimal" name="unit_price" placeholder="Unit Price" step="0.01" required>
+                    </div>
+                    <div class="form-row">
+                        <input type="text" name="supplier" placeholder="Supplier">
+                        <input type="text" name="location" placeholder="Location">
+                    </div>
+                    <textarea name="description" placeholder="Description"></textarea>
+                    <button type="submit" name="add_product" class="btn-primary">Add Product</button>
+                </form>
+            </div>
         <?php endif; ?>
 
         <!-- Products Table -->
@@ -167,72 +172,72 @@ if ($searchTerm) {
                     </thead>
                     <tbody>
                         <?php foreach ($products as $product): ?>
-                        <tr class="<?php echo $product['quantity'] <= $product['min_quantity'] ? 'low-stock' : ''; ?>">
-                            <td><?php echo $product['sku']; ?></td>
-                            <td><?php echo $product['name']; ?></td>
-                            <td><?php echo $product['category_name']; ?></td>
-                            <td><?php echo $product['quantity']; ?></td>
-                            <td>₱<?php echo number_format($product['unit_price'], 2); ?></td>
-                            <td><?php echo $product['location']; ?></td>
-                            <td>
-                                <?php if ($user['role'] === 'admin' || $user['role'] === 'manager'): ?>
-                                    <button class="btn-edit" onclick="toggleEditForm(<?php echo $product['id']; ?>)">Edit</button>
-                                    <button class="btn-adjust" onclick="toggleAdjustForm(<?php echo $product['id']; ?>)">Adjust</button>
-                                    <form method="POST" action="" style="display: inline;">
+                            <tr class="<?php echo $product['quantity'] <= $product['min_quantity'] ? 'low-stock' : ''; ?>">
+                                <td><?php echo $product['sku']; ?></td>
+                                <td><?php echo $product['name']; ?></td>
+                                <td><?php echo $product['category_name']; ?></td>
+                                <td><?php echo $product['quantity']; ?></td>
+                                <td>₱<?php echo number_format($product['unit_price'], 2); ?></td>
+                                <td><?php echo $product['location']; ?></td>
+                                <td>
+                                    <?php if ($user['role'] === 'admin' || $user['role'] === 'manager'): ?>
+                                        <button class="btn-edit" onclick="toggleEditForm(<?php echo $product['id']; ?>)">Edit</button>
+                                        <button class="btn-adjust" onclick="toggleAdjustForm(<?php echo $product['id']; ?>)">Adjust</button>
+                                        <form method="POST" action="" style="display: inline;">
+                                            <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
+                                            <button type="submit" name="delete_product" class="btn-delete" onclick="return confirm('Are you sure?')">Delete</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+
+                            <!-- Edit Form -->
+                            <tr id="edit-form-<?php echo $product['id']; ?>" class="edit-form" style="display: none;">
+                                <td colspan="7">
+                                    <form method="POST" action="">
                                         <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
-                                        <button type="submit" name="delete_product" class="btn-delete" onclick="return confirm('Are you sure?')">Delete</button>
+                                        <div class="form-row">
+                                            <input type="text" name="sku" value="<?php echo $product['sku']; ?>" required>
+                                            <input type="text" name="name" value="<?php echo $product['name']; ?>" required>
+                                            <select name="category_id" required>
+                                                <?php foreach ($categories as $category): ?>
+                                                    <option value="<?php echo $category['id']; ?>" <?php echo $category['id'] == $product['category_id'] ? 'selected' : ''; ?>><?php echo $category['name']; ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <input type="number" name="quantity" value="<?php echo $product['quantity']; ?>" required>
+                                            <input type="number" name="min_quantity" value="<?php echo $product['min_quantity']; ?>" required>
+                                            <input type="decimal" name="unit_price" value="<?php echo $product['unit_price']; ?>" step="0.01" required>
+                                        </div>
+                                        <div class="form-row">
+                                            <input type="text" name="supplier" value="<?php echo $product['supplier']; ?>">
+                                            <input type="text" name="location" value="<?php echo $product['location']; ?>">
+                                        </div>
+                                        <textarea name="description"><?php echo $product['description']; ?></textarea>
+                                        <div class="form-actions">
+                                            <button type="submit" name="update_product" class="btn-save">Save</button>
+                                            <button type="button" class="btn-cancel" onclick="toggleEditForm(<?php echo $product['id']; ?>)">Cancel</button>
+                                        </div>
                                     </form>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        
-                        <!-- Edit Form -->
-                        <tr id="edit-form-<?php echo $product['id']; ?>" class="edit-form" style="display: none;">
-                            <td colspan="7">
-                                <form method="POST" action="">
-                                    <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
-                                    <div class="form-row">
-                                        <input type="text" name="sku" value="<?php echo $product['sku']; ?>" required>
-                                        <input type="text" name="name" value="<?php echo $product['name']; ?>" required>
-                                        <select name="category_id" required>
-                                            <?php foreach ($categories as $category): ?>
-                                                <option value="<?php echo $category['id']; ?>" <?php echo $category['id'] == $product['category_id'] ? 'selected' : ''; ?>><?php echo $category['name']; ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <input type="number" name="quantity" value="<?php echo $product['quantity']; ?>" required>
-                                        <input type="number" name="min_quantity" value="<?php echo $product['min_quantity']; ?>" required>
-                                        <input type="decimal" name="unit_price" value="<?php echo $product['unit_price']; ?>" step="0.01" required>
-                                    </div>
-                                    <div class="form-row">
-                                        <input type="text" name="supplier" value="<?php echo $product['supplier']; ?>">
-                                        <input type="text" name="location" value="<?php echo $product['location']; ?>">
-                                    </div>
-                                    <textarea name="description"><?php echo $product['description']; ?></textarea>
-                                    <div class="form-actions">
-                                        <button type="submit" name="update_product" class="btn-save">Save</button>
-                                        <button type="button" class="btn-cancel" onclick="toggleEditForm(<?php echo $product['id']; ?>)">Cancel</button>
-                                    </div>
-                                </form>
-                            </td>
-                        </tr>
-                        
-                        <!-- Adjust Inventory Form -->
-                        <tr id="adjust-form-<?php echo $product['id']; ?>" class="adjust-form" style="display: none;">
-                            <td colspan="7">
-                                <form method="POST" action="">
-                                    <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
-                                    <div class="form-row">
-                                        <label>Current Quantity: <?php echo $product['quantity']; ?></label>
-                                        <input type="number" name="new_quantity" placeholder="New Quantity" required>
-                                        <input type="text" name="notes" placeholder="Notes (optional)">
-                                    </div>
-                                    <div class="form-actions">
-                                        <button type="submit" name="adjust_inventory" class="btn-save">Adjust</button>
-                                        <button type="button" class="btn-cancel" onclick="toggleAdjustForm(<?php echo $product['id']; ?>)">Cancel</button>
-                                    </div>
-                                </form>
-                            </td>
-                        </tr>
+                                </td>
+                            </tr>
+
+                            <!-- Adjust Inventory Form -->
+                            <tr id="adjust-form-<?php echo $product['id']; ?>" class="adjust-form" style="display: none;">
+                                <td colspan="7">
+                                    <form method="POST" action="">
+                                        <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
+                                        <div class="form-row">
+                                            <label>Current Quantity: <?php echo $product['quantity']; ?></label>
+                                            <input type="number" name="new_quantity" placeholder="New Quantity" required>
+                                            <input type="text" name="notes" placeholder="Notes (optional)">
+                                        </div>
+                                        <div class="form-actions">
+                                            <button type="submit" name="adjust_inventory" class="btn-save">Adjust</button>
+                                            <button type="button" class="btn-cancel" onclick="toggleAdjustForm(<?php echo $product['id']; ?>)">Cancel</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -266,7 +271,7 @@ if ($searchTerm) {
             const editForm = document.getElementById('edit-form-' + productId);
             editForm.style.display = editForm.style.display === 'none' ? 'table-row' : 'none';
         }
-        
+
         function toggleAdjustForm(productId) {
             const adjustForm = document.getElementById('adjust-form-' + productId);
             adjustForm.style.display = adjustForm.style.display === 'none' ? 'table-row' : 'none';
