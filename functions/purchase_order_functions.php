@@ -80,6 +80,120 @@ function createPurchaseOrder($connect2db, $adminId, $supplierId, $items, $notes,
 }
 
 // ─────────────────────────────────────────────────────────────
+//  CONFIRM — Purchase Order → merge into main inventory
+// ─────────────────────────────────────────────────────────────
+
+function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$result)
+{
+    $oid = (int)$orderId;
+    $aid = (int)$adminId;
+
+    // Verify PO exists and is still pending
+    $checkSql = "SELECT id FROM purchase_orders WHERE id = $oid AND status = 'pending'";
+    $checkQ   = mysqli_query($connect2db, $checkSql);
+    if (!$checkQ || mysqli_num_rows($checkQ) === 0) {
+        $resultClass = 'error';
+        $result      = 'Purchase order not found or already processed.';
+        return false;
+    }
+
+    // Fetch all line items
+    $itemsSql = "SELECT * FROM purchase_order_items WHERE purchase_order_id = $oid";
+    $itemsQ   = mysqli_query($connect2db, $itemsSql);
+    if (!$itemsQ) {
+        $resultClass = 'error';
+        $result      = mysqli_error($connect2db);
+        return false;
+    }
+
+    $items = [];
+    while ($row = mysqli_fetch_assoc($itemsQ)) {
+        $items[] = $row;
+    }
+
+    // For each line item: match by SKU → add quantity. No match → skip (product may have been
+    // deleted; we still mark PO confirmed but note the unmatched items).
+    $unmatched = [];
+    foreach ($items as $item) {
+        $skuEsc  = mysqli_real_escape_string($connect2db, $item['product_sku']);
+        $qty     = (int)$item['quantity'];
+
+        $findSql = "SELECT id, quantity FROM products WHERE sku = '$skuEsc' LIMIT 1";
+        $findQ   = mysqli_query($connect2db, $findSql);
+
+        if ($findQ && mysqli_num_rows($findQ) > 0) {
+            $product    = mysqli_fetch_assoc($findQ);
+            $pid        = (int)$product['id'];
+            $newQty     = (int)$product['quantity'] + $qty;
+
+            $updSql = "UPDATE products SET quantity = $newQty WHERE id = $pid";
+            if (!mysqli_query($connect2db, $updSql)) {
+                $resultClass = 'error';
+                $result      = 'Failed to update inventory: ' . mysqli_error($connect2db);
+                return false;
+            }
+
+            // Inventory log
+            $nameEsc  = mysqli_real_escape_string($connect2db, $item['product_name']);
+            $notesTxt = mysqli_real_escape_string($connect2db, "Confirmed from PO #$oid");
+            $logSql   = "INSERT INTO inventory_logs
+                            (product_id, user_id, action, quantity_change, previous_quantity, new_quantity, notes)
+                         VALUES ($pid, $aid, 'restocked', $qty, {$product['quantity']}, $newQty, '$notesTxt')";
+            mysqli_query($connect2db, $logSql); // non-fatal if log fails
+        } else {
+            $unmatched[] = $item['product_sku'];
+        }
+    }
+
+    // Mark PO as confirmed
+    $updPoSql = "UPDATE purchase_orders SET status = 'confirmed' WHERE id = $oid";
+    if (!mysqli_query($connect2db, $updPoSql)) {
+        $resultClass = 'error';
+        $result      = mysqli_error($connect2db);
+        return false;
+    }
+
+    $resultClass = 'success';
+    if (empty($unmatched)) {
+        $result = "Purchase Order #$oid confirmed. Inventory updated successfully.";
+    } else {
+        $skuList = implode(', ', $unmatched);
+        $result  = "Purchase Order #$oid confirmed. Note: the following SKUs were not found in inventory and were skipped: $skuList.";
+    }
+
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CANCEL — Purchase Order
+// ─────────────────────────────────────────────────────────────
+
+function cancelPurchaseOrder($connect2db, $orderId, &$resultClass, &$result)
+{
+    $oid = (int)$orderId;
+
+    // Verify PO is pending
+    $checkSql = "SELECT id FROM purchase_orders WHERE id = $oid AND status = 'pending'";
+    $checkQ   = mysqli_query($connect2db, $checkSql);
+    if (!$checkQ || mysqli_num_rows($checkQ) === 0) {
+        $resultClass = 'error';
+        $result      = 'Purchase order not found or already processed.';
+        return false;
+    }
+
+    $sql = "UPDATE purchase_orders SET status = 'cancelled' WHERE id = $oid";
+    if (!mysqli_query($connect2db, $sql)) {
+        $resultClass = 'error';
+        $result      = mysqli_error($connect2db);
+        return false;
+    }
+
+    $resultClass = 'success';
+    $result      = "Purchase Order #$oid has been cancelled.";
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  READ — All Purchase Orders (with join)
 // ─────────────────────────────────────────────────────────────
 

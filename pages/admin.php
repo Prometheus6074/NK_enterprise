@@ -19,7 +19,7 @@ include '../functions/admin_functions.php';
 include '../functions/inventory_functions.php';
 include '../functions/pos_functions.php';
 include '../functions/supplier_functions.php';
-include '../functions/purchase_order_functions.php'; // ← Phase 2
+include '../functions/purchase_order_functions.php';
 
 $user = $_SESSION['user'];
 
@@ -79,7 +79,7 @@ if (isset($_POST['reset_supplier_password'])) {
     resetSupplierPassword($connect2db, $_POST['supplier_id'], $_POST['new_supplier_password'], $resultClass, $result);
 }
 
-// ── Phase 2: Purchase Orders ──────────────────────────────────────────────────
+// ── Phase 2 / 3: Purchase Orders ──────────────────────────────────────────────
 if (isset($_POST['create_purchase_order'])) {
     $poSupplierId = (int)($_POST['po_supplier_id'] ?? 0);
     $poNotes      = $_POST['po_notes'] ?? '';
@@ -92,7 +92,7 @@ if (isset($_POST['create_purchase_order'])) {
     $poItems = [];
     foreach ($productIds as $i => $pid) {
         $qty = (int)($quantities[$i] ?? 0);
-        if ($qty <= 0) continue; // skip unchecked / zero rows
+        if ($qty <= 0) continue;
         $poItems[] = [
             'product_id'   => (int)$pid,
             'quantity'     => $qty,
@@ -110,6 +110,14 @@ if (isset($_POST['create_purchase_order'])) {
     }
 }
 
+if (isset($_POST['confirm_purchase_order'])) {
+    confirmPurchaseOrder($connect2db, (int)$_POST['po_id'], $user['id'], $resultClass, $result);
+}
+
+if (isset($_POST['cancel_purchase_order'])) {
+    cancelPurchaseOrder($connect2db, (int)$_POST['po_id'], $resultClass, $result);
+}
+
 // ── Fetch data ────────────────────────────────────────────────────────────────
 $users          = getAllUsers($connect2db);
 $products       = getProducts($connect2db);
@@ -125,7 +133,7 @@ $salesReport      = getSalesReport($connect2db);
 $topProducts      = getTopProductsReport($connect2db);
 $staffPerformance = getStaffPerformanceReport($connect2db);
 
-// Phase 2 data
+// Phase 2 / 3 data
 $purchaseOrders     = getPurchaseOrders($connect2db);
 $selectedSupplierId = isset($_GET['catalog_supplier']) ? (int)$_GET['catalog_supplier'] : null;
 $supplierCatalog    = $selectedSupplierId ? getSupplierCatalogForAdmin($connect2db, $selectedSupplierId) : [];
@@ -147,6 +155,13 @@ if ($searchTerm) {
 
 // Pending PO count for badge
 $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] === 'pending'));
+
+// Split orders by status for history section
+$pendingOrders   = array_values(array_filter($purchaseOrders, fn($o) => $o['status'] === 'pending'));
+$confirmedOrders = array_values(array_filter($purchaseOrders, fn($o) => $o['status'] === 'confirmed'));
+$cancelledOrders = array_values(array_filter($purchaseOrders, fn($o) => $o['status'] === 'cancelled'));
+$otherOrders     = array_merge($confirmedOrders, $cancelledOrders);
+usort($otherOrders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 ?>
 <!DOCTYPE html>
 <html>
@@ -402,8 +417,7 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                             </td>
                             <td><?php echo date('M j, Y', strtotime($sup['created_at'])); ?></td>
                             <td>
-                                <!-- Quick link to browse this supplier's catalog -->
-                                <a href="?catalog_supplier=<?php echo $sup['id']; ?>#purchase-orders"
+                                <a href="?catalog_supplier=<?php echo $sup['id']; ?>"
                                    class="btn-view"
                                    onclick="event.preventDefault(); window.location='?catalog_supplier=<?php echo $sup['id']; ?>'; setTimeout(()=>showTab('purchase-orders', document.querySelector('[onclick*=\'purchase-orders\']')),100);">
                                    Browse Catalog
@@ -440,7 +454,7 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════════════
-         PURCHASE ORDERS TAB  (Phase 2)
+         PURCHASE ORDERS TAB
     ════════════════════════════════════════════════════════════════════════ -->
     <div id="purchase-orders" class="tab-content">
         <h2>Purchase Orders</h2>
@@ -474,7 +488,6 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
             </form>
 
             <?php if (!$selectedSupplierId): ?>
-            <!-- Prompt -->
             <div class="po-select-prompt">
                 <span class="po-prompt-icon">🏪</span>
                 <p>Choose a supplier above to view their product catalog and create a purchase order.</p>
@@ -539,7 +552,6 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                                 <td><span class="po-avail"><?php echo number_format((int)$sp['quantity_available']); ?></span></td>
                                 <td class="po-price-cell">₱<?php echo number_format((float)$sp['unit_price'], 2); ?></td>
                                 <td>
-                                    <!-- Always-submitted hidden fields -->
                                     <input type="hidden" name="po_product_id[]"   value="<?php echo $sp['id']; ?>">
                                     <input type="hidden" name="po_product_name[]" value="<?php echo htmlspecialchars($sp['name']); ?>">
                                     <input type="hidden" name="po_product_sku[]"  value="<?php echo htmlspecialchars($sp['sku']); ?>">
@@ -565,7 +577,6 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                     </table>
                 </div>
 
-                <!-- Footer: notes + running total + submit -->
                 <div class="po-form-footer">
                     <div class="po-notes-field">
                         <label for="poNotes">Notes (optional)</label>
@@ -573,7 +584,7 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                     </div>
                     <div class="po-total-panel">
                         <div class="po-total-stats">
-                            <span>Selected: <strong id="poItemCount">0</strong> line item<?php echo ''; /* JS updates */ ?></span>
+                            <span>Selected: <strong id="poItemCount">0</strong> line item<?php echo ''; ?></span>
                             <span class="po-grand-total-label">Grand Total: <strong id="poGrandTotal">₱0.00</strong></span>
                         </div>
                         <button type="submit" name="create_purchase_order" class="btn-primary po-submit-btn" id="poSubmitBtn" disabled>
@@ -585,7 +596,7 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
             <?php endif; ?>
         </div><!-- /Section A -->
 
-        <!-- ── Section B: Incoming Stock (pending POs) ────────────────────── -->
+        <!-- ── Section B: Incoming Stock ──────────────────────────────────── -->
         <div class="po-section">
             <div class="po-section-header">
                 <h3>
@@ -594,13 +605,7 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                     <span class="po-incoming-badge"><?php echo $pendingPoCount; ?> Pending</span>
                     <?php endif; ?>
                 </h3>
-                <span class="po-section-meta">Confirm / Cancel available in Phase 3</span>
             </div>
-
-            <?php
-            $pendingOrders = array_filter($purchaseOrders, fn($o) => $o['status'] === 'pending');
-            $otherOrders   = array_filter($purchaseOrders, fn($o) => $o['status'] !== 'pending');
-            ?>
 
             <?php if (empty($pendingOrders)): ?>
             <div class="po-select-prompt" style="padding: 28px;">
@@ -632,10 +637,20 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                             <td><?php echo htmlspecialchars($po['admin_firstname'] . ' ' . $po['admin_lastname']); ?></td>
                             <td><?php echo date('M j, Y g:i A', strtotime($po['created_at'])); ?></td>
                             <td><span class="po-status-badge status-<?php echo $po['status']; ?>"><?php echo ucfirst($po['status']); ?></span></td>
-                            <td>
+                            <td class="po-action-cell">
                                 <button class="btn-view" onclick="togglePoDetails(<?php echo $po['id']; ?>)">Details</button>
-                                <!-- Phase 3 buttons will go here -->
-                                <span class="po-phase-note">Confirm &amp; Cancel — Phase 3</span>
+
+                                <form method="POST" action="" style="display:inline;"
+                                      onsubmit="return confirm('Confirm PO #<?php echo $po['id']; ?>? This will add all matched SKUs to the main inventory.')">
+                                    <input type="hidden" name="po_id" value="<?php echo $po['id']; ?>">
+                                    <button type="submit" name="confirm_purchase_order" class="btn-po-confirm">✔ Confirm</button>
+                                </form>
+
+                                <form method="POST" action="" style="display:inline;"
+                                      onsubmit="return confirm('Cancel PO #<?php echo $po['id']; ?>? This cannot be undone.')">
+                                    <input type="hidden" name="po_id" value="<?php echo $po['id']; ?>">
+                                    <button type="submit" name="cancel_purchase_order" class="btn-po-cancel">✕ Cancel</button>
+                                </form>
                             </td>
                         </tr>
                         <!-- Expandable line-items row -->
@@ -679,14 +694,31 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
             </div>
             <?php endif; ?>
 
-            <!-- Order history (collapsed) -->
+            <!-- ── Order History (confirmed + cancelled) ──────────────────── -->
             <?php if (!empty($otherOrders)): ?>
             <details class="po-history-details">
-                <summary>View Completed / Cancelled Orders (<?php echo count($otherOrders); ?>)</summary>
+                <summary>
+                    View Order History
+                    (<?php
+                        $parts = [];
+                        if (count($confirmedOrders)) $parts[] = count($confirmedOrders) . ' confirmed';
+                        if (count($cancelledOrders)) $parts[] = count($cancelledOrders) . ' cancelled';
+                        echo implode(', ', $parts);
+                    ?>)
+                </summary>
                 <div class="table-container" style="margin-top:12px;">
                     <table class="po-orders-table">
                         <thead>
-                            <tr><th>PO #</th><th>Supplier</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr>
+                            <tr>
+                                <th>PO #</th>
+                                <th>Supplier</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Created By</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Details</th>
+                            </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($otherOrders as $po): ?>
@@ -695,8 +727,44 @@ $pendingPoCount = count(array_filter($purchaseOrders, fn($o) => $o['status'] ===
                                 <td><?php echo htmlspecialchars($po['supplier_firstname'] . ' ' . $po['supplier_lastname']); ?></td>
                                 <td><?php echo $po['item_count']; ?></td>
                                 <td>₱<?php echo number_format($po['total_amount'], 2); ?></td>
+                                <td><?php echo htmlspecialchars($po['admin_firstname'] . ' ' . $po['admin_lastname']); ?></td>
                                 <td><?php echo date('M j, Y', strtotime($po['created_at'])); ?></td>
                                 <td><span class="po-status-badge status-<?php echo $po['status']; ?>"><?php echo ucfirst($po['status']); ?></span></td>
+                                <td>
+                                    <button class="btn-view" onclick="togglePoDetails(<?php echo $po['id']; ?>)">Details</button>
+                                </td>
+                            </tr>
+                            <tr id="po-details-<?php echo $po['id']; ?>" class="po-items-row" style="display:none;">
+                                <td colspan="8">
+                                    <?php $poFull = getPurchaseOrderWithItems($connect2db, $po['id']); ?>
+                                    <?php if ($poFull && !empty($poFull['items'])): ?>
+                                    <div class="po-items-inner">
+                                        <table class="po-items-table">
+                                            <thead><tr><th>SKU</th><th>Product</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr></thead>
+                                            <tbody>
+                                                <?php foreach ($poFull['items'] as $item): ?>
+                                                <tr>
+                                                    <td class="mono"><?php echo htmlspecialchars($item['product_sku']); ?></td>
+                                                    <td><?php echo htmlspecialchars($item['product_name']); ?></td>
+                                                    <td><?php echo number_format($item['quantity']); ?></td>
+                                                    <td>₱<?php echo number_format($item['unit_price'], 2); ?></td>
+                                                    <td>₱<?php echo number_format($item['total_price'], 2); ?></td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr class="po-items-total-row">
+                                                    <td colspan="4" style="text-align:right; font-weight:700;">Order Total:</td>
+                                                    <td style="font-weight:700;">₱<?php echo number_format($poFull['total_amount'], 2); ?></td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        <?php if ($poFull['notes']): ?>
+                                        <p class="po-items-notes">📝 <?php echo htmlspecialchars($poFull['notes']); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -1041,8 +1109,6 @@ function closeModal() {
 }
 
 // ── Purchase Order — catalog interactions ─────────────────────────────────────
-
-// Toggle a catalog row on/off when checkbox clicked
 function togglePoRow(checkbox, productId) {
     const qtyInput = document.getElementById('qty-' + productId);
     const row      = document.getElementById('po-row-' + productId);
@@ -1061,7 +1127,6 @@ function togglePoRow(checkbox, productId) {
     }
 }
 
-// Recalculate a row's subtotal + update grand total
 function onQtyChange(input, productId) {
     const qty      = Math.max(0, parseInt(input.value) || 0);
     const price    = parseFloat(input.dataset.price) || 0;
@@ -1070,7 +1135,6 @@ function onQtyChange(input, productId) {
     updatePoTotal();
 }
 
-// Recompute grand total across all checked rows
 function updatePoTotal() {
     let total = 0, count = 0;
 
@@ -1095,7 +1159,6 @@ function formatPeso(n) {
     return '₱' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-// Toggle PO line-items detail row
 function togglePoDetails(orderId) {
     const row = document.getElementById('po-details-' + orderId);
     if (!row) return;
@@ -1106,14 +1169,12 @@ function togglePoDetails(orderId) {
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
 
-    // If a supplier catalog was requested, open the Purchase Orders tab
     if (params.has('catalog_supplier')) {
         const btn = document.querySelector('[onclick*="purchase-orders"]');
         showTab('purchase-orders', btn);
         return;
     }
 
-    // URL hash fallback (e.g. #suppliers, #purchase-orders)
     const hash = window.location.hash.replace('#', '');
     if (hash && document.getElementById(hash)) {
         const btn = document.querySelector(`[onclick*="${hash}"]`);
