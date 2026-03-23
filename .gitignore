@@ -1,0 +1,15 @@
+# macOS system files
+.DS_Store
+
+# Editor / IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+
+# Environment files (future-proof)
+.env
+

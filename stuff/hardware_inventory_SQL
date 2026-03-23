@@ -1,0 +1,274 @@
+-- Hardware Inventory Management System Database Schema
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: localhost
+-- Generation Time: Mar 11, 2026 at 7:56 AM
+-- Server version: 10.4.28-MariaDB
+-- PHP Version: 8.0.28
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Database: `hardware_inventory`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `users`
+--
+
+CREATE TABLE `users` (
+  `id` int(15) NOT NULL,
+  `firstname` varchar(255) NOT NULL,
+  `lastname` varchar(255) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` enum('admin','manager','cashier') NOT NULL DEFAULT 'cashier',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`id`, `firstname`, `lastname`, `email`, `password`, `role`) VALUES
+(1, 'Admin', 'User', 'admin@hardware.com', '$2y$10$9w3WnsaRH2O9V8mWFmuf2.FlefUpKF6mXMCVRrUTFOhPrVryJMJhu', 'admin');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `categories`
+--
+
+CREATE TABLE `categories` (
+  `id` int(15) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `categories`
+--
+
+INSERT INTO `categories` (`id`, `name`, `description`) VALUES
+(1, 'Tools', 'Hand tools and power tools'),
+(2, 'Electrical', 'Electrical components and supplies'),
+(3, 'Plumbing', 'Plumbing fixtures and supplies'),
+(4, 'Building Materials', 'Construction materials'),
+(5, 'Fasteners', 'Screws, nails, bolts, etc.');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `products`
+--
+
+CREATE TABLE `products` (
+  `id` int(15) NOT NULL,
+  `sku` varchar(50) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `category_id` int(15) NOT NULL,
+  `quantity` int(11) NOT NULL DEFAULT 0,
+  `min_quantity` int(11) NOT NULL DEFAULT 5,
+  `unit_price` decimal(10,2) NOT NULL,
+  `supplier` varchar(255) DEFAULT NULL,
+  `location` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `products`
+--
+
+INSERT INTO `products` (`id`, `sku`, `name`, `description`, `category_id`, `quantity`, `min_quantity`, `unit_price`, `supplier`, `location`) VALUES
+(1, 'HAM001', 'Hammer', '16 oz claw hammer', 1, 50, 10, '15.99', 'Tool Supply Co', 'Aisle 1'),
+(2, 'DRILL001', 'Power Drill', '18V cordless drill', 1, 25, 5, '89.99', 'Power Tools Inc', 'Aisle 2'),
+(3, 'WIRE001', 'Electrical Wire', '14 gauge copper wire', 2, 100, 20, '0.50', 'Electro Supply', 'Aisle 3'),
+(4, 'PIPE001', 'PVC Pipe', '1/2 inch PVC pipe', 3, 75, 15, '2.99', 'Plumbing Co', 'Aisle 4'),
+(5, 'SCREW001', 'Wood Screws', '#8 wood screws 100 pack', 5, 200, 50, '8.99', 'Fastener Supply', 'Aisle 5');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `sales`
+--
+
+CREATE TABLE `sales` (
+  `id` int(15) NOT NULL,
+  `user_id` int(15) NOT NULL,
+  `total_amount` decimal(10,2) NOT NULL,
+  `payment_method` enum('cash','card','credit') NOT NULL DEFAULT 'cash',
+  `customer_name` varchar(255) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `sale_items`
+--
+
+CREATE TABLE `sale_items` (
+  `id` int(15) NOT NULL,
+  `sale_id` int(15) NOT NULL,
+  `product_id` int(15) NOT NULL,
+  `quantity` int(11) NOT NULL,
+  `unit_price` decimal(10,2) NOT NULL,
+  `total_price` decimal(10,2) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `inventory_logs`
+--
+
+CREATE TABLE `inventory_logs` (
+  `id` int(15) NOT NULL,
+  `product_id` int(15) NOT NULL,
+  `user_id` int(15) NOT NULL,
+  `action` enum('added','sold','adjusted','restocked') NOT NULL,
+  `quantity_change` int(11) NOT NULL,
+  `previous_quantity` int(11) NOT NULL,
+  `new_quantity` int(11) NOT NULL,
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `email` (`email`);
+
+--
+-- Indexes for table `categories`
+--
+ALTER TABLE `categories`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `products`
+--
+ALTER TABLE `products`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `sku` (`sku`),
+  ADD KEY `category_id` (`category_id`);
+
+--
+-- Indexes for table `sales`
+--
+ALTER TABLE `sales`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `user_id` (`user_id`);
+
+--
+-- Indexes for table `sale_items`
+--
+ALTER TABLE `sale_items`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `sale_id` (`sale_id`),
+  ADD KEY `product_id` (`product_id`);
+
+--
+-- Indexes for table `inventory_logs`
+--
+ALTER TABLE `inventory_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `product_id` (`product_id`),
+  ADD KEY `user_id` (`user_id`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `users`
+--
+ALTER TABLE `users`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `categories`
+--
+ALTER TABLE `categories`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT for table `products`
+--
+ALTER TABLE `products`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT for table `sales`
+--
+ALTER TABLE `sales`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `sale_items`
+--
+ALTER TABLE `sale_items`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `inventory_logs`
+--
+ALTER TABLE `inventory_logs`
+  MODIFY `id` int(15) NOT NULL AUTO_INCREMENT;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `products`
+--
+ALTER TABLE `products`
+  ADD CONSTRAINT `products_category_id` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `sales`
+--
+ALTER TABLE `sales`
+  ADD CONSTRAINT `sales_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `sale_items`
+--
+ALTER TABLE `sale_items`
+  ADD CONSTRAINT `sale_items_product_id` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `sale_items_sale_id` FOREIGN KEY (`sale_id`) REFERENCES `sales` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `inventory_logs`
+--
+ALTER TABLE `inventory_logs`
+  ADD CONSTRAINT `inventory_logs_product_id` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `inventory_logs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

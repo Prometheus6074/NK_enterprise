@@ -1,0 +1,30 @@
+1. Update the posts table by adding a column that stores the date and time when a post is created.
+- Each post must display this timestamp in the interface.
+
+2. Create a new table named comments that stores:
+- a unique comment identifier
+- the related post identifier
+- the user identifier of the commenter
+- the comment description
+- the date and time the comment was created
+- All comments should be displayed below their corresponding post.
+
+3. Define foreign key constraints that connect:
+- comments to posts
+- comments to accounts
+
+4. Delete post feature
+- Add a delete option to every post.
+- Ensure that only a logged-in user can perform deletion
+- a user can delete only their own posts
+- a confirmation or error message is displayed after deletion
+
+5. Update post feature
+- Provide a way to edit existing posts.
+- Ensure that the owner of the post can edit it
+
+6. Profile page - Create a separate profile page that displays:
+- the user’s personal information
+- all posts created by that user
+- the timestamps of those posts
+- Navigation between the dashboard and the profile page should be available.
