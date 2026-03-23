@@ -111,12 +111,13 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
         $items[] = $row;
     }
 
-    // For each line item: match by SKU → add quantity. No match → skip (product may have been
-    // deleted; we still mark PO confirmed but note the unmatched items).
+    // For each line item: match by SKU → add quantity to main inventory,
+    // then deduct from supplier catalog. No match → skip and note unmatched.
     $unmatched = [];
     foreach ($items as $item) {
         $skuEsc  = mysqli_real_escape_string($connect2db, $item['product_sku']);
         $qty     = (int)$item['quantity'];
+        $spId    = (int)$item['supplier_product_id'];
 
         $findSql = "SELECT id, quantity FROM products WHERE sku = '$skuEsc' LIMIT 1";
         $findQ   = mysqli_query($connect2db, $findSql);
@@ -126,6 +127,7 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
             $pid        = (int)$product['id'];
             $newQty     = (int)$product['quantity'] + $qty;
 
+            // Add to main inventory
             $updSql = "UPDATE products SET quantity = $newQty WHERE id = $pid";
             if (!mysqli_query($connect2db, $updSql)) {
                 $resultClass = 'error';
@@ -133,13 +135,19 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
                 return false;
             }
 
+            // Deduct from supplier's catalog quantity
+            $deductSql = "UPDATE supplier_products
+                          SET quantity_available = GREATEST(0, quantity_available - $qty)
+                          WHERE id = $spId";
+            mysqli_query($connect2db, $deductSql); // non-fatal
+
             // Inventory log
             $nameEsc  = mysqli_real_escape_string($connect2db, $item['product_name']);
             $notesTxt = mysqli_real_escape_string($connect2db, "Confirmed from PO #$oid");
             $logSql   = "INSERT INTO inventory_logs
                             (product_id, user_id, action, quantity_change, previous_quantity, new_quantity, notes)
                          VALUES ($pid, $aid, 'restocked', $qty, {$product['quantity']}, $newQty, '$notesTxt')";
-            mysqli_query($connect2db, $logSql); // non-fatal if log fails
+            mysqli_query($connect2db, $logSql); // non-fatal
         } else {
             $unmatched[] = $item['product_sku'];
         }
