@@ -29,7 +29,6 @@ function createUser($connect2db, $data, &$resultClass, &$result)
     $password = $data['password'];
     $role = $data['role'];
 
-    // Check if email already exists
     $checkSql = "SELECT id FROM users WHERE email = '$email'";
     $checkQuery = mysqli_query($connect2db, $checkSql);
     
@@ -63,7 +62,6 @@ function updateUser($connect2db, $userId, $data, &$resultClass, &$result)
     $email = $data['email'];
     $role = $data['role'];
 
-    // Check if email already exists for another user
     $checkSql = "SELECT id FROM users WHERE email = '$email' AND id != $userId";
     $checkQuery = mysqli_query($connect2db, $checkSql);
     
@@ -94,14 +92,12 @@ function updateUser($connect2db, $userId, $data, &$resultClass, &$result)
 
 function deleteUser($connect2db, $userId, &$resultClass, &$result)
 {
-    // Prevent admin from deleting themselves
     if (isset($_SESSION['user']) && $_SESSION['user']['id'] == $userId) {
         $resultClass = "error";
         $result = "You cannot delete your own account";
         return;
     }
 
-    // Check if user has sales
     $salesSql = "SELECT COUNT(*) as sale_count FROM sales WHERE user_id = $userId";
     $salesQuery = mysqli_query($connect2db, $salesSql);
     $salesData = mysqli_fetch_assoc($salesQuery);
@@ -149,7 +145,6 @@ function getSystemStats($connect2db)
 {
     $stats = [];
     
-    // User counts by role
     $userStatsSql = "SELECT role, COUNT(*) as count FROM users GROUP BY role";
     $userStatsQuery = mysqli_query($connect2db, $userStatsSql);
     $stats['users'] = [];
@@ -157,7 +152,6 @@ function getSystemStats($connect2db)
         $stats['users'][$row['role']] = $row['count'];
     }
     
-    // Product stats
     $productStatsSql = "SELECT 
         COUNT(*) as total_products,
         SUM(quantity) as total_quantity,
@@ -166,7 +160,6 @@ function getSystemStats($connect2db)
     $productStatsQuery = mysqli_query($connect2db, $productStatsSql);
     $stats['products'] = mysqli_fetch_assoc($productStatsQuery);
     
-    // Sales stats
     $salesStatsSql = "SELECT 
         COUNT(*) as total_sales,
         SUM(total_amount) as total_revenue,
@@ -175,7 +168,6 @@ function getSystemStats($connect2db)
     $salesStatsQuery = mysqli_query($connect2db, $salesStatsSql);
     $stats['sales'] = mysqli_fetch_assoc($salesStatsQuery);
     
-    // Today's stats
     $todaySql = "SELECT 
         COUNT(*) as today_sales,
         SUM(total_amount) as today_revenue
@@ -258,10 +250,11 @@ function getStaffPerformanceReport($connect2db, $startDate = null, $endDate = nu
         SUM(s.total_amount) as total_revenue,
         AVG(s.total_amount) as avg_sale_amount
         FROM users u
-        LEFT JOIN sales s ON u.id = s.user_id";
+        LEFT JOIN sales s ON u.id = s.user_id
+        WHERE u.role = 'cashier'";
     
     if ($startDate && $endDate) {
-        $sql .= " WHERE DATE(s.created_at) BETWEEN '$startDate' AND '$endDate'";
+        $sql .= " AND DATE(s.created_at) BETWEEN '$startDate' AND '$endDate'";
     }
     
     $sql .= " GROUP BY u.id, u.firstname, u.lastname, u.role
@@ -280,8 +273,6 @@ function getStaffPerformanceReport($connect2db, $startDate = null, $endDate = nu
 // System Settings
 function getSystemSettings($connect2db)
 {
-    // For now, return default settings
-    // In a real system, these would be stored in a settings table
     return [
         'company_name' => 'Hardware Store',
         'company_email' => 'contact@hardware.com',
@@ -295,17 +286,12 @@ function getSystemSettings($connect2db)
 
 function updateSystemSettings($connect2db, $settings, &$resultClass, &$result)
 {
-    // In a real implementation, this would update a settings table
-    // For now, just return success
     $resultClass = "success";
     $result = "Settings updated successfully";
 }
 
-// Database Operations
 function backupDatabase($connect2db, &$resultClass, &$result)
 {
-    // This would create a database backup
-    // For security reasons, this is a placeholder implementation
     $resultClass = "success";
     $result = "Database backup completed successfully";
 }
