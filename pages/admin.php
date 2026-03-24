@@ -26,10 +26,7 @@ if (isset($_POST['update_product']))    updateProduct($connect2db, $_POST['produ
 if (isset($_POST['delete_product']))    deleteProduct($connect2db, $_POST['product_id'], $resultClass, $result);
 if (isset($_POST['adjust_inventory']))  adjustInventory($connect2db, $_POST['product_id'], $user['id'], $_POST['new_quantity'], $_POST['notes'], $resultClass, $result);
 if (isset($_POST['add_category']))      createCategory($connect2db, $_POST, $resultClass, $result);
-// System
-if (isset($_POST['update_settings']))   updateSystemSettings($connect2db, $_POST, $resultClass, $result);
-if (isset($_POST['backup_database']))   backupDatabase($connect2db, $resultClass, $result);
-if (isset($_POST['export_data']))       $exportData = exportData($connect2db, $_POST['export_type'], $resultClass, $result, $_POST['start_date'] ?? null, $_POST['end_date'] ?? null);
+// Sales
 if (isset($_POST['refund_sale']))       refundSale($connect2db, $_POST['sale_id'], $user['id'], $resultClass, $result);
 // Supplier management
 if (isset($_POST['create_supplier']))         createSupplier($connect2db, $_POST, $resultClass, $result);
@@ -48,7 +45,13 @@ if (isset($_POST['create_purchase_order'])) {
     foreach ($productIds as $i => $pid) {
         $qty = (int)($quantities[$i] ?? 0);
         if ($qty <= 0) continue;
-        $poItems[] = ['product_id' => (int)$pid, 'quantity' => $qty, 'unit_price' => (float)($prices[$i]??0), 'product_name' => $names[$i]??'', 'product_sku' => $skus[$i]??''];
+        $poItems[] = [
+            'product_id'   => (int)$pid,
+            'quantity'     => $qty,
+            'unit_price'   => (float)($prices[$i] ?? 0),
+            'product_name' => $names[$i] ?? '',
+            'product_sku'  => $skus[$i]  ?? ''
+        ];
     }
     if (empty($poItems)) { $resultClass = 'error'; $result = 'Please select at least one product with a quantity greater than 0.'; }
     else createPurchaseOrder($connect2db, $user['id'], $poSupplierId, $poItems, $poNotes, $resultClass, $result);
@@ -57,24 +60,22 @@ if (isset($_POST['confirm_purchase_order'])) confirmPurchaseOrder($connect2db, (
 if (isset($_POST['cancel_purchase_order']))  cancelPurchaseOrder($connect2db, (int)$_POST['po_id'], $resultClass, $result);
 
 // Fetch data
-$users          = getAllUsers($connect2db);
-$products       = getProducts($connect2db);
-$categories     = getCategories($connect2db);
-$systemStats    = getSystemStats($connect2db);
-$systemSettings = getSystemSettings($connect2db);
-$recentSales    = getSales($connect2db, 10);
-$activityLogs   = getSystemActivityLogs($connect2db, 20);
-$suppliers      = getAllSuppliers($connect2db);
-$salesReport    = getSalesReport($connect2db);
-$topProducts    = getTopProductsReport($connect2db);
-$staffPerformance = getStaffPerformanceReport($connect2db);
+$users        = getAllUsers($connect2db);
+$products     = getProducts($connect2db);
+$categories   = getCategories($connect2db);
+$systemStats  = getSystemStats($connect2db);
+$recentSales  = getSales($connect2db, 10);
+$activityLogs = getSystemActivityLogs($connect2db, 20);
+$suppliers    = getAllSuppliers($connect2db);
 
 $purchaseOrders     = getPurchaseOrders($connect2db);
 $selectedSupplierId = isset($_GET['catalog_supplier']) ? (int)$_GET['catalog_supplier'] : null;
 $supplierCatalog    = $selectedSupplierId ? getSupplierCatalogForAdmin($connect2db, $selectedSupplierId) : [];
 $selectedSupplierInfo = null;
 if ($selectedSupplierId) {
-    foreach ($suppliers as $s) { if ((int)$s['id'] === $selectedSupplierId) { $selectedSupplierInfo = $s; break; } }
+    foreach ($suppliers as $s) {
+        if ((int)$s['id'] === $selectedSupplierId) { $selectedSupplierInfo = $s; break; }
+    }
 }
 
 $searchTerm = isset($_GET['search']) ? $_GET['search'] : '';
@@ -85,7 +86,7 @@ $pendingOrders   = array_values(array_filter($purchaseOrders, fn($o) => $o['stat
 $confirmedOrders = array_values(array_filter($purchaseOrders, fn($o) => $o['status'] === 'confirmed'));
 $cancelledOrders = array_values(array_filter($purchaseOrders, fn($o) => $o['status'] === 'cancelled'));
 $otherOrders     = array_merge($confirmedOrders, $cancelledOrders);
-usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['created_at']));
+usort($otherOrders, fn($a, $b) => strtotime($b['created_at']) - strtotime($a['created_at']));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -104,7 +105,7 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
     <div class="page-header">
       <div class="page-header-left">
         <h1>Admin Panel</h1>
-        <span class="page-header-breadcrumb">System management &amp; reports</span>
+        <span class="page-header-breadcrumb">System management</span>
       </div>
     </div>
 
@@ -116,19 +117,17 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
 
       <!-- Tabs -->
       <div class="admin-tabs">
-        <button class="tab-btn active"  onclick="showTab('overview',        this)">Overview</button>
-        <button class="tab-btn"         onclick="showTab('users',           this)">Staff</button>
-        <button class="tab-btn"         onclick="showTab('suppliers',       this)">Suppliers</button>
-        <button class="tab-btn"         onclick="showTab('purchase-orders', this)">
+        <button class="tab-btn active" onclick="showTab('overview',        this)">Overview</button>
+        <button class="tab-btn"        onclick="showTab('users',           this)">Staff</button>
+        <button class="tab-btn"        onclick="showTab('suppliers',       this)">Suppliers</button>
+        <button class="tab-btn"        onclick="showTab('purchase-orders', this)">
           Purchase Orders
           <?php if ($pendingPoCount > 0): ?>
           <span class="po-nav-badge"><?php echo $pendingPoCount; ?></span>
           <?php endif; ?>
         </button>
-        <button class="tab-btn"         onclick="showTab('products',        this)">Products</button>
-        <button class="tab-btn"         onclick="showTab('sales',           this)">Sales</button>
-        <button class="tab-btn"         onclick="showTab('reports',         this)">Reports</button>
-        <button class="tab-btn"         onclick="showTab('settings',        this)">Settings</button>
+        <button class="tab-btn"        onclick="showTab('products',        this)">Products</button>
+        <button class="tab-btn"        onclick="showTab('sales',           this)">Sales</button>
       </div>
 
       <!-- ── OVERVIEW ── -->
@@ -147,9 +146,9 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
             <h3>Total Users</h3>
             <p><?php echo array_sum($systemStats['users']); ?></p>
             <small>
-              Admin: <?php echo $systemStats['users']['admin']??0; ?> &middot;
-              Manager: <?php echo $systemStats['users']['manager']??0; ?> &middot;
-              Cashier: <?php echo $systemStats['users']['cashier']??0; ?>
+              Admin: <?php echo $systemStats['users']['admin']    ?? 0; ?> &middot;
+              Manager: <?php echo $systemStats['users']['manager'] ?? 0; ?> &middot;
+              Cashier: <?php echo $systemStats['users']['cashier'] ?? 0; ?>
             </small>
           </div>
           <div class="stat-card">
@@ -173,20 +172,21 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
             </div>
             <h3>Total Sales</h3>
             <p><?php echo $systemStats['sales']['total_sales']; ?></p>
-            <small>Revenue: ₱<?php echo number_format($systemStats['sales']['total_revenue']??0, 2); ?></small>
+            <small>Revenue: ₱<?php echo number_format($systemStats['sales']['total_revenue'] ?? 0, 2); ?></small>
           </div>
           <div class="stat-card">
             <div class="stat-card-icon" style="background:#ede9fe;color:#7c3aed;">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8"  y1="2" x2="8"  y2="6"/>
+                <line x1="3"  y1="10" x2="21" y2="10"/>
               </svg>
             </div>
             <h3>Today's Activity</h3>
             <p><?php echo $systemStats['today']['today_sales']; ?> Sales</p>
-            <small>Revenue: ₱<?php echo number_format($systemStats['today']['today_revenue']??0, 2); ?></small>
+            <small>Revenue: ₱<?php echo number_format($systemStats['today']['today_revenue'] ?? 0, 2); ?></small>
           </div>
         </div>
 
@@ -204,8 +204,8 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <div class="low-stock-alert" style="border-left-color:var(--brand);">
             <h3>Incoming Stock</h3>
             <p>
-              <?php echo $pendingPoCount; ?> purchase order<?php echo $pendingPoCount!==1?'s':''; ?> pending confirmation.
-              <a href="#" onclick="showTab('purchase-orders',document.querySelector('[onclick*=\'purchase-orders\']'));return false;"
+              <?php echo $pendingPoCount; ?> purchase order<?php echo $pendingPoCount !== 1 ? 's' : ''; ?> pending confirmation.
+              <a href="#" onclick="showTab('purchase-orders', document.querySelector('[onclick*=\'purchase-orders\']')); return false;"
                  style="color:var(--brand);font-weight:600;">View</a>
             </p>
           </div>
@@ -219,7 +219,7 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
             <div class="activity-item">
               <strong><?php echo ucfirst($log['action']); ?></strong>
               <span><?php echo htmlspecialchars($log['product_name']); ?></span>
-              <span>by <?php echo htmlspecialchars($log['firstname'].' '.$log['lastname']); ?></span>
+              <span>by <?php echo htmlspecialchars($log['firstname'] . ' ' . $log['lastname']); ?></span>
               <span class="activity-time"><?php echo date('M j, g:i A', strtotime($log['created_at'])); ?></span>
             </div>
             <?php endforeach; ?>
@@ -233,12 +233,12 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <h3>Add New Staff Member</h3>
           <form method="POST" action="" class="user-form">
             <div class="form-row">
-              <input type="text"  name="firstname" placeholder="First Name" required>
-              <input type="text"  name="lastname"  placeholder="Last Name"  required>
-              <input type="email" name="email"     placeholder="Email"       required>
+              <input type="text"     name="firstname" placeholder="First Name" required>
+              <input type="text"     name="lastname"  placeholder="Last Name"  required>
+              <input type="email"    name="email"     placeholder="Email"      required>
             </div>
             <div class="form-row">
-              <input type="password" name="password" placeholder="Password" required>
+              <input type="password" name="password"  placeholder="Password"  required>
               <select name="role" required>
                 <option value="">Select Role</option>
                 <option value="admin">Admin</option>
@@ -254,12 +254,14 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <h3>Current Staff Members</h3>
           <div class="table-container">
             <table class="users-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr>
+              </thead>
               <tbody>
                 <?php foreach ($users as $userItem): ?>
                 <?php if ($userItem['role'] === 'supplier') continue; ?>
                 <tr>
-                  <td><?php echo htmlspecialchars($userItem['firstname'].' '.$userItem['lastname']); ?></td>
+                  <td><?php echo htmlspecialchars($userItem['firstname'] . ' ' . $userItem['lastname']); ?></td>
                   <td><?php echo htmlspecialchars($userItem['email']); ?></td>
                   <td><span class="role-badge role-<?php echo $userItem['role']; ?>"><?php echo ucfirst($userItem['role']); ?></span></td>
                   <td><?php echo date('M j, Y', strtotime($userItem['created_at'])); ?></td>
@@ -284,9 +286,9 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                         <input type="text"  name="lastname"  value="<?php echo htmlspecialchars($userItem['lastname']); ?>"  required>
                         <input type="email" name="email"     value="<?php echo htmlspecialchars($userItem['email']); ?>"     required>
                         <select name="role" required>
-                          <option value="admin"   <?php echo $userItem['role']==='admin'  ?'selected':''; ?>>Admin</option>
-                          <option value="manager" <?php echo $userItem['role']==='manager'?'selected':''; ?>>Manager</option>
-                          <option value="cashier" <?php echo $userItem['role']==='cashier'?'selected':''; ?>>Cashier</option>
+                          <option value="admin"   <?php echo $userItem['role'] === 'admin'   ? 'selected' : ''; ?>>Admin</option>
+                          <option value="manager" <?php echo $userItem['role'] === 'manager' ? 'selected' : ''; ?>>Manager</option>
+                          <option value="cashier" <?php echo $userItem['role'] === 'cashier' ? 'selected' : ''; ?>>Cashier</option>
                         </select>
                       </div>
                       <div class="form-actions">
@@ -324,12 +326,12 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <h3>Add New Supplier Account</h3>
           <form method="POST" action="" class="user-form">
             <div class="form-row">
-              <input type="text"  name="firstname" placeholder="First Name" required>
-              <input type="text"  name="lastname"  placeholder="Last Name"  required>
-              <input type="email" name="email"     placeholder="Email"       required>
+              <input type="text"     name="firstname" placeholder="First Name" required>
+              <input type="text"     name="lastname"  placeholder="Last Name"  required>
+              <input type="email"    name="email"     placeholder="Email"      required>
             </div>
             <div class="form-row">
-              <input type="password" name="password" placeholder="Password" required>
+              <input type="password" name="password"  placeholder="Password"  required>
             </div>
             <button type="submit" name="create_supplier" class="btn-primary">Create Supplier Account</button>
           </form>
@@ -342,19 +344,21 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <?php else: ?>
           <div class="table-container">
             <table class="suppliers-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Products</th><th>Registered</th><th>Actions</th></tr></thead>
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Products</th><th>Registered</th><th>Actions</th></tr>
+              </thead>
               <tbody>
                 <?php foreach ($suppliers as $sup): ?>
                 <tr>
-                  <td><strong><?php echo htmlspecialchars($sup['firstname'].' '.$sup['lastname']); ?></strong></td>
+                  <td><strong><?php echo htmlspecialchars($sup['firstname'] . ' ' . $sup['lastname']); ?></strong></td>
                   <td><?php echo htmlspecialchars($sup['email']); ?></td>
-                  <td><span class="product-count-badge"><?php echo (int)$sup['product_count']; ?> product<?php echo $sup['product_count']!=1?'s':''; ?></span></td>
+                  <td><span class="product-count-badge"><?php echo (int)$sup['product_count']; ?> product<?php echo $sup['product_count'] != 1 ? 's' : ''; ?></span></td>
                   <td><?php echo date('M j, Y', strtotime($sup['created_at'])); ?></td>
                   <td>
                     <a href="?catalog_supplier=<?php echo $sup['id']; ?>"
                        class="btn-view"
-                       onclick="event.preventDefault();window.location='?catalog_supplier=<?php echo $sup['id']; ?>';setTimeout(()=>showTab('purchase-orders',document.querySelector('[onclick*=\'purchase-orders\']')),100);">
-                       Browse Catalog
+                       onclick="event.preventDefault(); window.location='?catalog_supplier=<?php echo $sup['id']; ?>'; setTimeout(() => showTab('purchase-orders', document.querySelector('[onclick*=\'purchase-orders\']')), 100);">
+                      Browse Catalog
                     </a>
                     <button class="btn-reset" onclick="toggleSupplierPasswordReset(<?php echo $sup['id']; ?>)">Reset PW</button>
                     <form method="POST" action="" style="display:inline;">
@@ -396,8 +400,8 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
             <h3>Browse Supplier Catalog</h3>
             <?php if ($selectedSupplierInfo): ?>
             <span class="po-section-meta">
-              Viewing: <strong><?php echo htmlspecialchars($selectedSupplierInfo['firstname'].' '.$selectedSupplierInfo['lastname']); ?></strong>
-              &middot; <?php echo count($supplierCatalog); ?> product<?php echo count($supplierCatalog)!==1?'s':''; ?>
+              Viewing: <strong><?php echo htmlspecialchars($selectedSupplierInfo['firstname'] . ' ' . $selectedSupplierInfo['lastname']); ?></strong>
+              &middot; <?php echo count($supplierCatalog); ?> product<?php echo count($supplierCatalog) !== 1 ? 's' : ''; ?>
             </span>
             <?php endif; ?>
           </div>
@@ -407,8 +411,8 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
               <select name="catalog_supplier" class="po-supplier-dropdown" onchange="this.form.submit()">
                 <option value="">— Select a supplier to browse their catalog —</option>
                 <?php foreach ($suppliers as $s): ?>
-                <option value="<?php echo $s['id']; ?>" <?php echo ($selectedSupplierId==$s['id'])?'selected':''; ?>>
-                  <?php echo htmlspecialchars($s['firstname'].' '.$s['lastname']); ?>
+                <option value="<?php echo $s['id']; ?>" <?php echo ($selectedSupplierId == $s['id']) ? 'selected' : ''; ?>>
+                  <?php echo htmlspecialchars($s['firstname'] . ' ' . $s['lastname']); ?>
                   (<?php echo (int)$s['product_count']; ?> products)
                 </option>
                 <?php endforeach; ?>
@@ -422,7 +426,8 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/>
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-              <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/>
+              <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/>
+              <path d="M2 7h20"/>
             </svg>
             <p>Choose a supplier above to view their product catalog and create a purchase order.</p>
           </div>
@@ -472,12 +477,12 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                     <td>
                       <strong><?php echo htmlspecialchars($sp['name']); ?></strong>
                       <?php if ($sp['description']): ?>
-                      <br><small class="po-desc-preview"><?php echo htmlspecialchars(mb_substr($sp['description'],0,70)); ?><?php echo mb_strlen($sp['description'])>70?'…':''; ?></small>
+                      <br><small class="po-desc-preview"><?php echo htmlspecialchars(mb_substr($sp['description'], 0, 70)); ?><?php echo mb_strlen($sp['description']) > 70 ? '…' : ''; ?></small>
                       <?php endif; ?>
                     </td>
-                    <td><?php echo htmlspecialchars($sp['category']?:'—'); ?></td>
+                    <td><?php echo htmlspecialchars($sp['category'] ?: '—'); ?></td>
                     <td><span class="po-avail"><?php echo number_format((int)$sp['quantity_available']); ?></span></td>
-                    <td class="po-price-cell">₱<?php echo number_format((float)$sp['unit_price'],2); ?></td>
+                    <td class="po-price-cell">₱<?php echo number_format((float)$sp['unit_price'], 2); ?></td>
                     <td>
                       <input type="hidden" name="po_product_id[]"   value="<?php echo $sp['id']; ?>">
                       <input type="hidden" name="po_product_name[]" value="<?php echo htmlspecialchars($sp['name']); ?>">
@@ -487,7 +492,7 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                              class="po-qty-input" id="qty-<?php echo $sp['id']; ?>"
                              data-price="<?php echo $sp['unit_price']; ?>"
                              data-row="<?php echo $sp['id']; ?>"
-                             oninput="onQtyChange(this,<?php echo $sp['id']; ?>)" disabled>
+                             oninput="onQtyChange(this, <?php echo $sp['id']; ?>)" disabled>
                     </td>
                     <td class="po-subtotal-cell" id="sub-<?php echo $sp['id']; ?>">₱0.00</td>
                   </tr>
@@ -537,17 +542,19 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
           <div class="table-container">
             <table class="po-orders-table">
               <thead>
-                <tr><th>PO #</th><th>Supplier</th><th>Items</th><th>Total Amount</th>
-                    <th>Created By</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+                <tr>
+                  <th>PO #</th><th>Supplier</th><th>Items</th><th>Total Amount</th>
+                  <th>Created By</th><th>Date</th><th>Status</th><th>Actions</th>
+                </tr>
               </thead>
               <tbody>
                 <?php foreach ($pendingOrders as $po): ?>
                 <tr>
                   <td><strong class="mono">#<?php echo $po['id']; ?></strong></td>
-                  <td><?php echo htmlspecialchars($po['supplier_firstname'].' '.$po['supplier_lastname']); ?></td>
-                  <td><?php echo $po['item_count']; ?> item<?php echo $po['item_count']!=1?'s':''; ?></td>
-                  <td class="po-price-cell">₱<?php echo number_format($po['total_amount'],2); ?></td>
-                  <td><?php echo htmlspecialchars($po['admin_firstname'].' '.$po['admin_lastname']); ?></td>
+                  <td><?php echo htmlspecialchars($po['supplier_firstname'] . ' ' . $po['supplier_lastname']); ?></td>
+                  <td><?php echo $po['item_count']; ?> item<?php echo $po['item_count'] != 1 ? 's' : ''; ?></td>
+                  <td class="po-price-cell">₱<?php echo number_format($po['total_amount'], 2); ?></td>
+                  <td><?php echo htmlspecialchars($po['admin_firstname'] . ' ' . $po['admin_lastname']); ?></td>
                   <td><?php echo date('M j, Y g:i A', strtotime($po['created_at'])); ?></td>
                   <td><span class="po-status-badge status-<?php echo $po['status']; ?>"><?php echo ucfirst($po['status']); ?></span></td>
                   <td class="po-action-cell">
@@ -577,15 +584,15 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                             <td class="mono"><?php echo htmlspecialchars($item['product_sku']); ?></td>
                             <td><?php echo htmlspecialchars($item['product_name']); ?></td>
                             <td><?php echo number_format($item['quantity']); ?></td>
-                            <td>₱<?php echo number_format($item['unit_price'],2); ?></td>
-                            <td>₱<?php echo number_format($item['total_price'],2); ?></td>
+                            <td>₱<?php echo number_format($item['unit_price'], 2); ?></td>
+                            <td>₱<?php echo number_format($item['total_price'], 2); ?></td>
                           </tr>
                           <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                           <tr class="po-items-total-row">
                             <td colspan="4" style="text-align:right;font-weight:700;">Order Total:</td>
-                            <td style="font-weight:700;">₱<?php echo number_format($poFull['total_amount'],2); ?></td>
+                            <td style="font-weight:700;">₱<?php echo number_format($poFull['total_amount'], 2); ?></td>
                           </tr>
                         </tfoot>
                       </table>
@@ -607,23 +614,25 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
             <summary>
               View Order History
               (<?php
-                $parts=[];
-                if(count($confirmedOrders)) $parts[]=count($confirmedOrders).' confirmed';
-                if(count($cancelledOrders)) $parts[]=count($cancelledOrders).' cancelled';
-                echo implode(', ',$parts);
+                $parts = [];
+                if (count($confirmedOrders)) $parts[] = count($confirmedOrders) . ' confirmed';
+                if (count($cancelledOrders)) $parts[] = count($cancelledOrders) . ' cancelled';
+                echo implode(', ', $parts);
               ?>)
             </summary>
             <div class="table-container" style="margin-top:12px;">
               <table class="po-orders-table">
-                <thead><tr><th>PO #</th><th>Supplier</th><th>Items</th><th>Total</th><th>Created By</th><th>Date</th><th>Status</th><th>Details</th></tr></thead>
+                <thead>
+                  <tr><th>PO #</th><th>Supplier</th><th>Items</th><th>Total</th><th>Created By</th><th>Date</th><th>Status</th><th>Details</th></tr>
+                </thead>
                 <tbody>
                   <?php foreach ($otherOrders as $po): ?>
                   <tr>
                     <td class="mono">#<?php echo $po['id']; ?></td>
-                    <td><?php echo htmlspecialchars($po['supplier_firstname'].' '.$po['supplier_lastname']); ?></td>
+                    <td><?php echo htmlspecialchars($po['supplier_firstname'] . ' ' . $po['supplier_lastname']); ?></td>
                     <td><?php echo $po['item_count']; ?></td>
-                    <td>₱<?php echo number_format($po['total_amount'],2); ?></td>
-                    <td><?php echo htmlspecialchars($po['admin_firstname'].' '.$po['admin_lastname']); ?></td>
+                    <td>₱<?php echo number_format($po['total_amount'], 2); ?></td>
+                    <td><?php echo htmlspecialchars($po['admin_firstname'] . ' ' . $po['admin_lastname']); ?></td>
                     <td><?php echo date('M j, Y', strtotime($po['created_at'])); ?></td>
                     <td><span class="po-status-badge status-<?php echo $po['status']; ?>"><?php echo ucfirst($po['status']); ?></span></td>
                     <td><button class="btn-view" onclick="togglePoDetails(<?php echo $po['id']; ?>)">Details</button></td>
@@ -641,15 +650,15 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                               <td class="mono"><?php echo htmlspecialchars($item['product_sku']); ?></td>
                               <td><?php echo htmlspecialchars($item['product_name']); ?></td>
                               <td><?php echo number_format($item['quantity']); ?></td>
-                              <td>₱<?php echo number_format($item['unit_price'],2); ?></td>
-                              <td>₱<?php echo number_format($item['total_price'],2); ?></td>
+                              <td>₱<?php echo number_format($item['unit_price'], 2); ?></td>
+                              <td>₱<?php echo number_format($item['total_price'], 2); ?></td>
                             </tr>
                             <?php endforeach; ?>
                           </tbody>
                           <tfoot>
                             <tr class="po-items-total-row">
                               <td colspan="4" style="text-align:right;font-weight:700;">Order Total:</td>
-                              <td style="font-weight:700;">₱<?php echo number_format($poFull['total_amount'],2); ?></td>
+                              <td style="font-weight:700;">₱<?php echo number_format($poFull['total_amount'], 2); ?></td>
                             </tr>
                           </tfoot>
                         </table>
@@ -713,12 +722,12 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
               </thead>
               <tbody>
                 <?php foreach ($products as $product): ?>
-                <tr class="<?php echo $product['quantity']<=$product['min_quantity']?'low-stock':''; ?>">
+                <tr class="<?php echo $product['quantity'] <= $product['min_quantity'] ? 'low-stock' : ''; ?>">
                   <td class="mono"><?php echo htmlspecialchars($product['sku']); ?></td>
                   <td><?php echo htmlspecialchars($product['name']); ?></td>
                   <td><?php echo htmlspecialchars($product['category_name']); ?></td>
                   <td><?php echo $product['quantity']; ?></td>
-                  <td>₱<?php echo number_format($product['unit_price'],2); ?></td>
+                  <td>₱<?php echo number_format($product['unit_price'], 2); ?></td>
                   <td><?php echo htmlspecialchars($product['location']); ?></td>
                   <td>
                     <button class="btn-edit"   onclick="toggleProductEditForm(<?php echo $product['id']; ?>)">Edit</button>
@@ -740,7 +749,7 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                         <select name="category_id" required>
                           <?php foreach ($categories as $cat): ?>
                           <option value="<?php echo $cat['id']; ?>"
-                            <?php echo $cat['id']==$product['category_id']?'selected':''; ?>>
+                            <?php echo $cat['id'] == $product['category_id'] ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($cat['name']); ?>
                           </option>
                           <?php endforeach; ?>
@@ -797,10 +806,10 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
                 <?php foreach ($recentSales as $sale): ?>
                 <tr>
                   <td class="mono">#<?php echo $sale['id']; ?></td>
-                  <td><?php echo htmlspecialchars($sale['firstname'].' '.$sale['lastname']); ?></td>
-                  <td>₱<?php echo number_format($sale['total_amount'],2); ?></td>
+                  <td><?php echo htmlspecialchars($sale['firstname'] . ' ' . $sale['lastname']); ?></td>
+                  <td>₱<?php echo number_format($sale['total_amount'], 2); ?></td>
                   <td><?php echo ucfirst($sale['payment_method']); ?></td>
-                  <td><?php echo htmlspecialchars($sale['customer_name']?:'N/A'); ?></td>
+                  <td><?php echo htmlspecialchars($sale['customer_name'] ?: 'N/A'); ?></td>
                   <td><?php echo date('M j, Y g:i A', strtotime($sale['created_at'])); ?></td>
                   <td>
                     <button class="btn-view" onclick="viewSaleDetails(<?php echo $sale['id']; ?>)">View</button>
@@ -815,126 +824,6 @@ usort($otherOrders, fn($a,$b) => strtotime($b['created_at']) - strtotime($a['cre
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-
-      <!-- ── REPORTS ── -->
-      <div id="reports" class="tab-content">
-        <div class="reports-grid">
-          <div class="report-section">
-            <h3>Sales Report</h3>
-            <div class="table-container">
-              <table class="report-table">
-                <thead><tr><th>Date</th><th>Sales Count</th><th>Revenue</th><th>Avg Sale</th></tr></thead>
-                <tbody>
-                  <?php foreach (array_slice($salesReport,0,10) as $r): ?>
-                  <tr>
-                    <td><?php echo date('M j, Y', strtotime($r['date'])); ?></td>
-                    <td><?php echo $r['sales_count']; ?></td>
-                    <td>₱<?php echo number_format($r['revenue'],2); ?></td>
-                    <td>₱<?php echo number_format($r['avg_amount'],2); ?></td>
-                  </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="report-section">
-            <h3>Top Selling Products</h3>
-            <div class="table-container">
-              <table class="report-table">
-                <thead><tr><th>Product</th><th>Units Sold</th><th>Revenue</th><th>Transactions</th></tr></thead>
-                <tbody>
-                  <?php foreach ($topProducts as $p): ?>
-                  <tr>
-                    <td><?php echo htmlspecialchars($p['name']); ?></td>
-                    <td><?php echo $p['total_sold']; ?></td>
-                    <td>₱<?php echo number_format($p['total_revenue'],2); ?></td>
-                    <td><?php echo $p['sales_count']; ?></td>
-                  </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="report-section">
-            <h3>Staff Performance</h3>
-            <div class="table-container">
-              <table class="report-table">
-                <thead><tr><th>Staff Member</th><th>Role</th><th>Sales</th><th>Revenue</th><th>Avg Sale</th></tr></thead>
-                <tbody>
-                  <?php foreach ($staffPerformance as $s): ?>
-                  <tr>
-                    <td><?php echo htmlspecialchars($s['firstname'].' '.$s['lastname']); ?></td>
-                    <td><?php echo ucfirst($s['role']); ?></td>
-                    <td><?php echo $s['sales_count']; ?></td>
-                    <td>₱<?php echo number_format($s['total_revenue'],2); ?></td>
-                    <td>₱<?php echo number_format($s['avg_sale_amount'],2); ?></td>
-                  </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <div class="export-section">
-          <h3>Export Data</h3>
-          <form method="POST" action="" class="export-form">
-            <div class="form-row">
-              <select name="export_type" required>
-                <option value="">Select Data Type</option>
-                <option value="products">Products</option>
-                <option value="sales">Sales</option>
-                <option value="users">Users</option>
-              </select>
-              <input type="date" name="start_date">
-              <input type="date" name="end_date">
-            </div>
-            <button type="submit" name="export_data" class="btn-primary">Export Data</button>
-          </form>
-        </div>
-      </div>
-
-      <!-- ── SETTINGS ── -->
-      <div id="settings" class="tab-content">
-        <div class="settings-section">
-          <h3>General Settings</h3>
-          <form method="POST" action="" class="settings-form">
-            <div class="form-row">
-              <label>Company Name:</label>
-              <input type="text" name="company_name" value="<?php echo htmlspecialchars($systemSettings['company_name']); ?>">
-            </div>
-            <div class="form-row">
-              <label>Company Email:</label>
-              <input type="email" name="company_email" value="<?php echo htmlspecialchars($systemSettings['company_email']); ?>">
-            </div>
-            <div class="form-row">
-              <label>Currency:</label>
-              <select name="currency">
-                <option value="PHP" <?php echo $systemSettings['currency']==='PHP'?'selected':''; ?>>PHP (Philippine Peso)</option>
-                <option value="USD" <?php echo $systemSettings['currency']==='USD'?'selected':''; ?>>USD (US Dollar)</option>
-                <option value="EUR" <?php echo $systemSettings['currency']==='EUR'?'selected':''; ?>>EUR (Euro)</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Tax Rate (%):</label>
-              <input type="number" name="tax_rate"
-                     value="<?php echo $systemSettings['tax_rate']*100; ?>" step="0.1">
-              <small>Current: <?php echo $systemSettings['tax_rate']*100; ?>% (PH VAT)</small>
-            </div>
-            <div class="form-row">
-              <label>Low Stock Threshold:</label>
-              <input type="number" name="low_stock_threshold"
-                     value="<?php echo $systemSettings['low_stock_threshold']; ?>">
-            </div>
-            <button type="submit" name="update_settings" class="btn-primary">Save Settings</button>
-          </form>
-        </div>
-        <div class="maintenance-section">
-          <h3>System Maintenance</h3>
-          <form method="POST" action="" style="display:inline;">
-            <button type="submit" name="backup_database" class="btn-primary">Backup Database</button>
-          </form>
         </div>
       </div>
 
@@ -960,11 +849,13 @@ function showTab(tabName, btn) {
   document.getElementById(tabName).classList.add('active');
   if (btn) btn.classList.add('active');
 }
-function toggleUserEditForm(id)         { const el=document.getElementById('user-edit-'+id);      el.style.display=el.style.display==='none'?'table-row':'none'; }
-function togglePasswordReset(id)        { const el=document.getElementById('password-reset-'+id); el.style.display=el.style.display==='none'?'table-row':'none'; }
-function toggleSupplierPasswordReset(id){ const el=document.getElementById('sup-pw-reset-'+id);  el.style.display=el.style.display==='none'?'table-row':'none'; }
-function toggleProductEditForm(id)      { const el=document.getElementById('product-edit-'+id);   el.style.display=el.style.display==='none'?'table-row':'none'; }
-function toggleAdjustForm(id)           { const el=document.getElementById('adjust-form-'+id);    el.style.display=el.style.display==='none'?'table-row':'none'; }
+function toggleUserEditForm(id)          { const el = document.getElementById('user-edit-'      + id); el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+function togglePasswordReset(id)         { const el = document.getElementById('password-reset-' + id); el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+function toggleSupplierPasswordReset(id) { const el = document.getElementById('sup-pw-reset-'   + id); el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+function toggleProductEditForm(id)       { const el = document.getElementById('product-edit-'   + id); el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+function toggleAdjustForm(id)            { const el = document.getElementById('adjust-form-'    + id); el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+function togglePoDetails(orderId)        { const el = document.getElementById('po-details-'     + orderId); if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none'; }
+
 function viewSaleDetails(saleId) {
   const content = document.getElementById('saleDetailsContent');
   content.innerHTML = '<p style="padding:20px;color:#6b7280;">Loading...</p>';
@@ -1003,75 +894,77 @@ function viewSaleDetails(saleId) {
             <tbody>${rows}</tbody>
             <tfoot><tr style="border-top:2px solid #e5e7eb;">
               <td colspan="4" style="padding:10px 10px 4px;text-align:right;font-weight:700;">Grand Total:</td>
-              <td style="padding:10px 10px 4px;text-align:right;font-weight:700;color:#FFDE42;">₱${parseFloat(data.total_amount).toFixed(2)}</td>
+              <td style="padding:10px 10px 4px;text-align:right;font-weight:700;color:#00ADB5;">₱${parseFloat(data.total_amount).toFixed(2)}</td>
             </tr></tfoot>
           </table>
         </div>`;
     })
     .catch(() => { content.innerHTML = '<p style="padding:20px;color:#ef4444;">Failed to load.</p>'; });
 }
+
 function closeModal() {
   document.getElementById('saleDetailsModal').style.display = 'none';
 }
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('saleDetailsModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-  });
-});
 
 function togglePoRow(checkbox, productId) {
-  const qtyInput = document.getElementById('qty-'+productId);
-  const row      = document.getElementById('po-row-'+productId);
+  const qtyInput = document.getElementById('qty-' + productId);
+  const row      = document.getElementById('po-row-' + productId);
   if (checkbox.checked) {
     qtyInput.disabled = false;
-    if (parseInt(qtyInput.value)<=0) qtyInput.value = 1;
+    if (parseInt(qtyInput.value) <= 0) qtyInput.value = 1;
     row.classList.add('po-row-selected');
     onQtyChange(qtyInput, productId);
   } else {
     qtyInput.disabled = true;
     qtyInput.value    = 0;
     row.classList.remove('po-row-selected');
-    document.getElementById('sub-'+productId).textContent = '₱0.00';
+    document.getElementById('sub-' + productId).textContent = '₱0.00';
     updatePoTotal();
   }
 }
+
 function onQtyChange(input, productId) {
-  const qty      = Math.max(0, parseInt(input.value)||0);
-  const price    = parseFloat(input.dataset.price)||0;
-  document.getElementById('sub-'+productId).textContent = formatPeso(qty*price);
+  const qty   = Math.max(0, parseInt(input.value) || 0);
+  const price = parseFloat(input.dataset.price) || 0;
+  document.getElementById('sub-' + productId).textContent = formatPeso(qty * price);
   updatePoTotal();
 }
+
 function updatePoTotal() {
-  let total=0, count=0;
+  let total = 0, count = 0;
   document.querySelectorAll('.po-check:checked').forEach(cb => {
-    const rowId=cb.dataset.row, qi=document.getElementById('qty-'+rowId);
-    const qty=parseInt(qi?.value)||0, price=parseFloat(qi?.dataset.price)||0;
-    if (qty>0) { total+=qty*price; count++; }
+    const rowId = cb.dataset.row;
+    const qi    = document.getElementById('qty-' + rowId);
+    const qty   = parseInt(qi?.value) || 0;
+    const price = parseFloat(qi?.dataset.price) || 0;
+    if (qty > 0) { total += qty * price; count++; }
   });
-  const totalEl=document.getElementById('poGrandTotal');
-  const countEl=document.getElementById('poItemCount');
-  const btnEl  =document.getElementById('poSubmitBtn');
+  const totalEl = document.getElementById('poGrandTotal');
+  const countEl = document.getElementById('poItemCount');
+  const btnEl   = document.getElementById('poSubmitBtn');
   if (totalEl) totalEl.textContent = formatPeso(total);
-  if (countEl) countEl.textContent = count + ' line item' + (count!==1?'s':'');
-  if (btnEl)   btnEl.disabled      = count===0;
+  if (countEl) countEl.textContent = count + ' line item' + (count !== 1 ? 's' : '');
+  if (btnEl)   btnEl.disabled      = count === 0;
 }
-function formatPeso(n) { return '₱'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
-function togglePoDetails(orderId) {
-  const row=document.getElementById('po-details-'+orderId);
-  if (!row) return;
-  row.style.display=row.style.display==='none'?'table-row':'none';
+
+function formatPeso(n) {
+  return '₱' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('saleDetailsModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
   const params = new URLSearchParams(window.location.search);
   if (params.has('catalog_supplier')) {
-    const btn=document.querySelector('[onclick*="purchase-orders"]');
+    const btn = document.querySelector('[onclick*="purchase-orders"]');
     showTab('purchase-orders', btn);
     return;
   }
-  const hash=window.location.hash.replace('#','');
+  const hash = window.location.hash.replace('#', '');
   if (hash && document.getElementById(hash)) {
-    const btn=document.querySelector(`[onclick*="${hash}"]`);
+    const btn = document.querySelector(`[onclick*="${hash}"]`);
     showTab(hash, btn);
   }
 });
