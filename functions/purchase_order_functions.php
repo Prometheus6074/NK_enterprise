@@ -30,7 +30,6 @@ function createPurchaseOrder($connect2db, $adminId, $supplierId, $items, $notes,
     $sid      = (int)$supplierId;
     $notesEsc = mysqli_real_escape_string($connect2db, $notes ?? '');
 
-    // Calculate grand total from checked items only (qty > 0)
     $total = 0;
     foreach ($items as $item) {
         $total += (int)$item['quantity'] * (float)$item['unit_price'];
@@ -42,7 +41,6 @@ function createPurchaseOrder($connect2db, $adminId, $supplierId, $items, $notes,
         return false;
     }
 
-    // Insert PO header
     $sql = "INSERT INTO purchase_orders (admin_id, supplier_id, status, total_amount, notes)
             VALUES ($aid, $sid, 'pending', $total, '$notesEsc')";
 
@@ -54,7 +52,6 @@ function createPurchaseOrder($connect2db, $adminId, $supplierId, $items, $notes,
 
     $orderId = mysqli_insert_id($connect2db);
 
-    // Insert line items
     foreach ($items as $item) {
         $pid        = (int)$item['product_id'];
         $qty        = (int)$item['quantity'];
@@ -88,7 +85,6 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
     $oid = (int)$orderId;
     $aid = (int)$adminId;
 
-    // Verify PO exists and is still pending
     $checkSql = "SELECT id FROM purchase_orders WHERE id = $oid AND status = 'pending'";
     $checkQ   = mysqli_query($connect2db, $checkSql);
     if (!$checkQ || mysqli_num_rows($checkQ) === 0) {
@@ -97,7 +93,6 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
         return false;
     }
 
-    // Fetch all line items
     $itemsSql = "SELECT * FROM purchase_order_items WHERE purchase_order_id = $oid";
     $itemsQ   = mysqli_query($connect2db, $itemsSql);
     if (!$itemsQ) {
@@ -111,8 +106,6 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
         $items[] = $row;
     }
 
-    // For each line item: match by SKU → add quantity to main inventory,
-    // then deduct from supplier catalog. No match → skip and note unmatched.
     $unmatched = [];
     foreach ($items as $item) {
         $skuEsc  = mysqli_real_escape_string($connect2db, $item['product_sku']);
@@ -127,7 +120,6 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
             $pid        = (int)$product['id'];
             $newQty     = (int)$product['quantity'] + $qty;
 
-            // Add to main inventory
             $updSql = "UPDATE products SET quantity = $newQty WHERE id = $pid";
             if (!mysqli_query($connect2db, $updSql)) {
                 $resultClass = 'error';
@@ -135,25 +127,22 @@ function confirmPurchaseOrder($connect2db, $orderId, $adminId, &$resultClass, &$
                 return false;
             }
 
-            // Deduct from supplier's catalog quantity
             $deductSql = "UPDATE supplier_products
                           SET quantity_available = GREATEST(0, quantity_available - $qty)
                           WHERE id = $spId";
-            mysqli_query($connect2db, $deductSql); // non-fatal
+            mysqli_query($connect2db, $deductSql);
 
-            // Inventory log
             $nameEsc  = mysqli_real_escape_string($connect2db, $item['product_name']);
             $notesTxt = mysqli_real_escape_string($connect2db, "Confirmed from PO #$oid");
             $logSql   = "INSERT INTO inventory_logs
                             (product_id, user_id, action, quantity_change, previous_quantity, new_quantity, notes)
                          VALUES ($pid, $aid, 'restocked', $qty, {$product['quantity']}, $newQty, '$notesTxt')";
-            mysqli_query($connect2db, $logSql); // non-fatal
+            mysqli_query($connect2db, $logSql);
         } else {
             $unmatched[] = $item['product_sku'];
         }
     }
 
-    // Mark PO as confirmed
     $updPoSql = "UPDATE purchase_orders SET status = 'confirmed' WHERE id = $oid";
     if (!mysqli_query($connect2db, $updPoSql)) {
         $resultClass = 'error';
@@ -180,7 +169,6 @@ function cancelPurchaseOrder($connect2db, $orderId, &$resultClass, &$result)
 {
     $oid = (int)$orderId;
 
-    // Verify PO is pending
     $checkSql = "SELECT id FROM purchase_orders WHERE id = $oid AND status = 'pending'";
     $checkQ   = mysqli_query($connect2db, $checkSql);
     if (!$checkQ || mysqli_num_rows($checkQ) === 0) {
@@ -202,7 +190,7 @@ function cancelPurchaseOrder($connect2db, $orderId, &$resultClass, &$result)
 }
 
 // ─────────────────────────────────────────────────────────────
-//  READ — All Purchase Orders (with join)
+//  READ — All Purchase Orders (admin view)
 // ─────────────────────────────────────────────────────────────
 
 function getPurchaseOrders($connect2db, $status = null)
@@ -235,6 +223,34 @@ function getPurchaseOrders($connect2db, $status = null)
 }
 
 // ─────────────────────────────────────────────────────────────
+//  READ — Purchase Orders for a specific supplier
+// ─────────────────────────────────────────────────────────────
+
+function getSupplierPurchaseOrders($connect2db, $supplierId)
+{
+    $sid = (int)$supplierId;
+    $sql = "SELECT
+                po.*,
+                u_adm.firstname AS admin_firstname,
+                u_adm.lastname  AS admin_lastname,
+                u_adm.email     AS admin_email,
+                COUNT(poi.id)   AS item_count
+            FROM purchase_orders po
+            LEFT JOIN users u_adm ON u_adm.id = po.admin_id
+            LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+            WHERE po.supplier_id = $sid
+            GROUP BY po.id
+            ORDER BY po.created_at DESC";
+
+    $q    = mysqli_query($connect2db, $sql);
+    $rows = [];
+    while ($row = mysqli_fetch_assoc($q)) {
+        $rows[] = $row;
+    }
+    return $rows;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  READ — Single PO with line items
 // ─────────────────────────────────────────────────────────────
 
@@ -246,8 +262,10 @@ function getPurchaseOrderWithItems($connect2db, $orderId)
                 po.*,
                 u_adm.firstname AS admin_firstname,
                 u_adm.lastname  AS admin_lastname,
+                u_adm.email     AS admin_email,
                 u_sup.firstname AS supplier_firstname,
-                u_sup.lastname  AS supplier_lastname
+                u_sup.lastname  AS supplier_lastname,
+                u_sup.email     AS supplier_email
             FROM purchase_orders po
             LEFT JOIN users u_adm ON u_adm.id = po.admin_id
             LEFT JOIN users u_sup ON u_sup.id = po.supplier_id
